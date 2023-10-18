@@ -3,14 +3,44 @@ from distutils.util import strtobool
 from time import localtime, sleep, strftime
 from typing import TYPE_CHECKING, Optional
 
-from tkinter import Button, Checkbutton, Entry, Frame, IntVar, Label, Tk, filedialog
+from tkinter import Button, Entry, Frame, Label, Tk, filedialog
+from tkinter.ttk import Combobox, Progressbar
+from tkinter.messagebox import showinfo, showerror
 
 if TYPE_CHECKING:
-    from tkinter import _Cursor, _Relief, _ScreenUnits, _TakeFocusValue, Misc
+    from tkinter import Misc
+
+
+SINGLE_DIR_MODE = "Single dir"
+INCLUDE_DIRS_MODE = "Include dirs"
+PARALLEL_DIRS_MODE = "Parallel dirs"
+
+
+class ProgressSelfBar(Progressbar):
+    def update_percent(self, percent: float):
+        """Percentage update progress bar."""
+        self["value"] = percent * 100
+        self.master.update()
 
 
 class App(Frame):
-    def __init__(self, master: Optional["Misc"] = None) -> None:
+    def __init__(self) -> None:
+        master = Tk()
+        master.title("Rename executor")
+
+        width = master.winfo_screenwidth()
+        height = master.winfo_screenheight()
+        if width > 600 * 1.3 and height > 450 * 1.3:
+            geometry_str = f"600x450+{width//2}+0"
+        else:
+            geometry_str = "%dx%d+%d+0" % (
+                master.winfo_screenwidth() / 2,
+                master.winfo_screenheight() / 2,
+                master.winfo_screenwidth() / 2,
+            )
+
+        master.geometry(geometry_str)
+
         super().__init__(master=master)
 
         master.protocol("WM_DELETE_WINDOW", self.before_quit)
@@ -22,12 +52,20 @@ class App(Frame):
 
         self.include_types = []
 
+        self.modes = (SINGLE_DIR_MODE, INCLUDE_DIRS_MODE, PARALLEL_DIRS_MODE)
+
+        self.total = 0
+        self.current = 0
+
         self.create_widgets()
 
     def before_quit(self):
-        pass
+        super().quit()
 
     def create_widgets(self):
+        self.progressbar = ProgressSelfBar(self, length=450, mode="determinate")
+        self.progressbar.pack(pady=[5, 15])
+
         # 获取文件
         self.choose_dir_bt = Button(
             self, font=("黑体", 16), width=20, height=1, text="选择目录", command=self.get_dir
@@ -56,9 +94,9 @@ class App(Frame):
         self.date_et.pack()
         self.date_et.insert(0, strftime("%Y-%m-%d", localtime()))
 
-        self.is_multi_dir = IntVar()
-        multi_dir_bt = Checkbutton(self, text="多文件夹", variable=self.is_multi_dir)
-        multi_dir_bt.pack(side="left")
+        self.mode_box = Combobox(self, values=self.modes, state="readonly")
+        self.mode_box.current(0)
+        self.mode_box.pack(side="left")
 
         _ = Button(
             self,
@@ -80,55 +118,25 @@ class App(Frame):
 
         self.et_title.insert(0, self.comic_dir.name)
 
-        # for dir in os.listdir(self.comic_dir):
-        #     # print(dir)
-        #     if os.path.isdir(self.comic_dir + os.sep + dir):
-        #         self.quick_flag = True
-        #         print(f"检测到目录 : {dir}")
-        #         self.comic_subdirs.append(self.comic_dir + os.sep + dir)
-        # # print(self.subdirs)
-
-        # if self.quick_flag:
-        #     print("即将进入快速制作书籍模式")
-        #     sleep(3)
-        # else:
-        #     self.comic_subdirs.clear()
-        #     self.comic_subdirs.append(self.comic_dir)
-
-        # for subdir in self.comic_subdirs:
-        #     # 初始化
-        #     self.initNewBook()
-
-        #     self.comic_dir = subdir
-
-        #     self.et_title.delete(0, "end")
-        #     if self.quick_flag:
-        #         self.et_title.insert(
-        #             0, self.comic_dir[self.comic_dir.rfind(os.sep) + 1 :]
-        #         )
-        #     else:
-        #         self.et_title.insert(
-        #             0, self.comic_dir[self.comic_dir.rfind("/") + 1 :]
-        #         )
-
-        #     # 生成目录结构，复制两个固定文件
-        #     # start_new_thread(self.createDirectoryTree,())
-        #     self.createDirectoryTree()
-
     def refresh_include_type(self):
         self.include_types.clear()
         self.include_types.extend(self.include_et.get().strip().split("|"))
 
-    def sub_rename(self, dir: pathlib.Path, start: int) -> int:
+    def sub_rename(self, dir: pathlib.Path, start: int, target: pathlib.Path) -> int:
         print(f"Info:: Start rename [{dir}] ...")
 
         i = start
-        for item in sorted(self.comic_dir.iterdir()):
-            print("---", item, item.suffix)
+        for item in sorted(dir.iterdir()):
+            # print("---", item, item.suffix)
+
+            if item.suffix not in self.include_types:
+                continue
 
             # rename to root dir.
-            item.rename(pathlib.Path(self.comic_dir, f"{i:06}{item.suffix}"))
+            item.rename(pathlib.Path(target, f"{i:06}{item.suffix}"))
             i += 1
+            self.current += 1
+            self.progressbar.update_percent(self.current / self.total)
 
         print("Info:: End rename.")
         return i - start
@@ -141,16 +149,39 @@ class App(Frame):
         # refresh the types that need to be processed.
         self.refresh_include_type()
 
-        is_multi = self.is_multi_dir.get() == 1
-        i = int(self.idx_et.get())  # get start index
+        cur_mode = self.modes[self.mode_box.current()]
 
-        if is_multi:
+        if cur_mode == SINGLE_DIR_MODE:
+            self.total = len(list(self.comic_dir.rglob("*")))
+            i = int(self.idx_et.get())  # get start index
+            self.sub_rename(self.comic_dir, i, self.comic_dir)
+        elif cur_mode == INCLUDE_DIRS_MODE:
+            self.total = len(list(self.comic_dir.rglob("*")))
+            i = int(self.idx_et.get())  # get start index
+
+            # only watch sub-dir.
             for sub_dir in sorted(self.comic_dir.iterdir()):
                 if sub_dir.is_dir():
-                    count = self.sub_rename(sub_dir, i)
+                    print(f"Info:: Find sub-dir: {sub_dir}")
+                    count = self.sub_rename(sub_dir, i, self.comic_dir)
                     i += count
+        elif cur_mode == PARALLEL_DIRS_MODE:
+            i = int(self.idx_et.get())  # get start index
+
+            # only watch sub-dir.
+            for sub_dir in sorted(self.comic_dir.iterdir()):
+                self.total = len(list(sub_dir.rglob("*")))
+
+                if sub_dir.is_dir():
+                    print(f"Info:: Find sub-dir: {sub_dir}")
+                    count = self.sub_rename(sub_dir, i, sub_dir)
         else:
-            self.sub_rename(self.comic_dir, i)
+            showerror("", "Not support mode.")
+
+        # Reset bar.
+        sleep(0.2)
+        self.progressbar.update_percent(0)
+        # showinfo("", "Finished rename!")
 
         # recheck = True
         # if recheck:
@@ -163,21 +194,14 @@ class App(Frame):
 
 
 if __name__ == "__main__":
-    master = Tk()
-    master.title("Rename")
-    # root.geometry("500x400+650+300")
-    master.geometry(
-        "%dx%d+%d+0"
-        % (
-            master.winfo_screenwidth() / 2,
-            master.winfo_screenheight(),
-            master.winfo_screenwidth() / 2,
-        )
-    )
-    app = App(master=master)
+    app = App()
     try:
         app.mainloop()
     except BaseException:
         pass
     finally:
-        app.beforeQuit()
+        app.before_quit()
+
+
+#############################
+# TODO：
