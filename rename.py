@@ -150,29 +150,28 @@ class App(Frame):
         self.refresh_include_type()
 
         cur_mode = self.modes[self.mode_box.current()]
+        print(f"Info:: mode is {cur_mode}")
+
+        i = int(self.idx_et.get())  # get start index
 
         if cur_mode == SINGLE_DIR_MODE:
-            self.total = len(list(self.comic_dir.rglob("*")))
-            i = int(self.idx_et.get())  # get start index
-            self.sub_rename(self.comic_dir, i, self.comic_dir)
+            with self:
+                self.sub_rename(self.comic_dir, i, self.comic_dir)
         elif cur_mode == INCLUDE_DIRS_MODE:
-            self.total = len(list(self.comic_dir.rglob("*")))
-            i = int(self.idx_et.get())  # get start index
-
-            # only watch sub-dir.
-            for sub_dir in sorted(self.comic_dir.iterdir()):
-                if sub_dir.is_dir():
-                    print(f"Info:: Find sub-dir: {sub_dir}")
-                    count = self.sub_rename(sub_dir, i, self.comic_dir)
-                    i += count
+            with self:
+                # only watch sub-dir.
+                for sub_dir in sorted(self.comic_dir.iterdir()):
+                    if sub_dir.is_dir():
+                        print(f"Info:: Find sub-dir: {sub_dir}")
+                        count = self.sub_rename(sub_dir, i, self.comic_dir)
+                        i += count
         elif cur_mode == PARALLEL_DIRS_MODE:
-            i = int(self.idx_et.get())  # get start index
-
             # only watch sub-dir.
             for sub_dir in sorted(self.comic_dir.iterdir()):
-                self.total = len(list(sub_dir.rglob("*")))
+                if not sub_dir.is_dir():
+                    continue
 
-                if sub_dir.is_dir():
+                with self:
                     print(f"Info:: Find sub-dir: {sub_dir}")
                     count = self.sub_rename(sub_dir, i, sub_dir)
         else:
@@ -191,6 +190,15 @@ class App(Frame):
         #     recheck_res = strtobool(input("Report:"))
         #     if not recheck_res:
         #         return
+
+    def __enter__(self):
+        # get new total.
+        self.total = len(list(self.comic_dir.rglob("*")))
+        print(f"Info: total page is {self.total}")
+
+    def __exit__(self, type, value, trace):
+        # Reset count index.
+        self.current = 0
 
 
 if __name__ == "__main__":
