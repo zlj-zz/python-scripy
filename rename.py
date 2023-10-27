@@ -1,5 +1,6 @@
 import pathlib
 from distutils.util import strtobool
+from pprint import pprint
 from time import localtime, sleep, strftime
 from typing import TYPE_CHECKING, Optional
 
@@ -107,6 +108,15 @@ class App(Frame):
             command=self.do_rename,
         ).pack(side="bottom")
 
+        _ = Button(
+            self,
+            text="CHECKING",
+            font=("黑体", 16),
+            width=20,
+            height=1,
+            command=self.do_checking,
+        ).pack(side="bottom")
+
     def get_dir(self):
         comic_dir_str = str(filedialog.askdirectory(title="选择文件", initialdir=""))
         self.comic_dir = pathlib.Path(comic_dir_str)
@@ -150,7 +160,7 @@ class App(Frame):
         self.refresh_include_type()
 
         cur_mode = self.modes[self.mode_box.current()]
-        print(f"Info:: mode is {cur_mode}")
+        print(f"Info:: mode is [{cur_mode}]")
 
         i = int(self.idx_et.get())  # get start index
 
@@ -190,6 +200,9 @@ class App(Frame):
         #     recheck_res = strtobool(input("Report:"))
         #     if not recheck_res:
         #         return
+
+    def do_checking(self):
+        pprint(sorted(self.comic_dir.iterdir()))
 
     def __enter__(self):
         # get new total.
